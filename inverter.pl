@@ -2,26 +2,30 @@
 #
 # AS AT 08Mar2012
 #
-# inverter.pl - polls data from the RS232 port on certain inverters and outputs data to a csv file
-# & optionally to http://pvoutput.org, depending on the configuration file settings (config.ini).
+# inverter.pl - polls data from the RS232 port on certain inverters and outputs data 
+# Kevdagoat: Modified to run a script, passing the data as an argument
 #
 # Usage examples:
-#       perl inverter.pl
-#       perl inverter.pl "COM1"
-#       perl inverter.pl "/dev/ttyS0"
+#       perl inverter.pl                < Read from config.ini
+#       perl inverter.pl "COM1"         < Open port "COM1" (Windows)
+#       perl inverter.pl "/dev/ttyS0"   < Open hardware serial one (Linux)
 #
 # Arguments:
 #  $ARGV[0] = OPTIONAL port name (eg: "COM1") if have >1 inverter. See: config.ini for defaults.
 #
-# Output Filenames
-# * inverter_[serial#]_YYYYMMDD.csv
-# * inverter_err_[serial#]_YYYYMM.csv
-# * inverter_[serial#].rrd
 #
 #######################################################################
 #
 # (c) 2010-2011 jinba @ jinba-ittai.net
 # Licensed under the GNU GPL version 2
+#
+# + editions by kevdagoat:
+#         - removal of filehandler function
+#         - removal of rrd graphing
+#         - removal of PVOutput support
+#         + added exportjson function
+#         + added influxdb python script (seperate)
+#         +/- updated config file to reflect changes
 #
 # + editions by shell_l_d:
 #          + edited to work with ActivePerl (Windows) too
@@ -109,20 +113,11 @@ my $config = AppConfig->new();
 
 # define new variables
 $config->define( "flags_debug!"          );
-$config->define( "flags_use_pvoutput!"   );
-$config->define( "flags_use_rrdtool!"    );
 $config->define( "secs_datapoll_freq=s"  );
-$config->define( "secs_pvoutput_freq=s"  );
 $config->define( "secs_timeout=s"        );
 $config->define( "secs_reinit=s"         );
 $config->define( "time_start_poll=s"     );
 $config->define( "time_end_poll=s"       );
-$config->define( "paths_windows=s"       );
-$config->define( "paths_other=s"         );
-$config->define( "scripts_pvoutput=s"    );
-$config->define( "scripts_create_rrd=s"  );
-$config->define( "scripts_rrdtool_exe_win=s" );
-$config->define( "scripts_rrdtool_exe_oth=s" );
 $config->define( "serial_baud=s"         );
 $config->define( "serial_port_win=s"     );
 $config->define( "serial_port_oth=s"     );
@@ -970,15 +965,6 @@ sub setPollTimes() {
 
 #######################################################################
 #
-# Set lastPvoutputTime & nextPvoutputTime
-#
-sub setPvoutputTimes() {
-  $lastPvoutputTime = time;
-  $nextPvoutputTime = $lastPvoutputTime + $config->secs_pvoutput_freq;
-} #end setPvoutputTimes
-
-#######################################################################
-#
 # Sleep until nextPollTime 
 #
 sub sleepTilNextPoll() {
@@ -1519,6 +1505,10 @@ sub exportJson() {
                   "$HoH{FAC}{VALUE},"     .
                   "'power_ac':"             .
                   "$HoH{PAC}{VALUE},"     .
+                  "'impedance_ac':"         .
+                  "$HoH{ZAC}{VALUE},"     .
+                  "'amp_ac':"               .
+                  "$HoH{IAC}{VALUE},"     .
                   "'total_energy':"         .
                   "$etotal,"                .
                   "'total_hours':"          .
@@ -1540,65 +1530,47 @@ sub exportJson() {
 sub main() {
    print "Starting up at " . &getDateTime() . " running on $^O ...\n";
 
-   #
    # Check if within the valid (config) polling times, exit if not
-   #
    if ( ! &isValidPollTime() ) {
      die "Exiting, as " . &getTime_HHMMSS() . " is outside valid poll times: " . $config->time_start_poll . " to " . $config->time_end_poll . "\n";
    }
    
-   #
-   # Initialise Poll & Pvoutput times
-   #
+   # Initialise Poll times
    &setPollTimes();
-   &setPvoutputTimes();
 
-   #
    # Initialise Serial Port & Inverter
-   #
    &initialiseSerialPort();
    &initialiseInverter();
 
-   #
    # Request Inverter Version Information
-   #
    print "Send -> req version: " . $config->sendhex_version . "\n";
    $hexResponse = &writeReadBuffer($config->sendhex_version,$config->recvhex_version);
    &parseVersData($hexResponse) if ($hexResponse ne "");
 
-   #
+
    # Request Inverter Parameter Format Information
-   #
    if ( $config->sendhex_paramfmt ne " " ) {
      print "Send -> req param format: " . $config->sendhex_paramfmt . "\n";
      $hexResponse = &writeReadBuffer($config->sendhex_paramfmt,$config->recvhex_paramfmt);
      &parseParamFmt($hexResponse) if ($hexResponse ne "");
    }
 
-   #
    # Request Inverter Parameter Information
-   #
    print "Send -> req params: " . $config->sendhex_param . "\n";
    $hexResponse = &writeReadBuffer($config->sendhex_param,$config->recvhex_param);
    &parseParam($hexResponse) if ($hexResponse ne "");
 
-   #
    # Request Inverter Data Format Information
-   #
    if ( $config->sendhex_datafmt ne " " ) {
      print "Send -> req data format: " . $config->sendhex_datafmt . "\n";
      $hexResponse = &writeReadBuffer($config->sendhex_datafmt,$config->recvhex_datafmt);
      &parseDataFmt($hexResponse) if ($hexResponse ne "");
    }
 
-   #
    # The main loop starts here
-   #
    while (1) {
 
-     #
      # Request Inverter Data (regular data poll)
-     #
      print "Send -> req data as at " . &getDateTime() . " : " . $config->sendhex_data . "\n";
      &setPollTimes();
      $hexResponse = &writeReadBuffer($config->sendhex_data,$config->recvhex_data);
