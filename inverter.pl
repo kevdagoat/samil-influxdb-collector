@@ -1508,7 +1508,9 @@ sub exportJson() {
     my $jsonLine = "{'temp':"                 .
                   "$HoH{TEMP}{VALUE},"    .
                   "'volts_pv':"             .
-                  "$HoH{VPV}{VALUE},"     .
+                  "$HoH{VPV1}{VALUE},"     .
+                  "'amps_pv':"             .
+                  "$HoH{IPV1}{VALUE},"     .
                   "'amp_ac':"               .
                   "$HoH{IAC}{VALUE},"     .
                   "'volts_ac':"             .
@@ -1526,9 +1528,9 @@ sub exportJson() {
                   "'total_today':"          .
                   "$HoH{ETODAY}{VALUE}"  .
                   "}";
-    print "--------------Running Influx Script------------------\n";
+    print "Running Influx Script\n";
     system ('python3 log.py "' . $jsonLine . '"');
-    print "--------------Done----------------\n"
+    print "Done\n"
 } #end exportJson
 
 #######################################################################
