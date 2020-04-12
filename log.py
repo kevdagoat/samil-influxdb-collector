@@ -1,16 +1,25 @@
 import sys
 import json
 import time
+from configparser import ConfigParser
 from influxdb import InfluxDBClient
 
-client = InfluxDBClient(host="10.0.1.17",
-                        port=8086)
+config = ConfigParser()
+config.read("influx.ini")
 
-client.create_database("energydb")
-client.switch_database("energydb")
+if config.getboolean('influx', 'auth'):
+        client = InfluxDBClient(host=config['influx']['host'],
+                                port=config['influx']['port'],
+                                username=config['influx']['user'],
+                                password=config['influx']['password'])
+else:
+        client = InfluxDBClient(host=config['influx']['host'],
+                                port=config['influx']['port'])
+
+client.create_database(config['influx']['database'])
+client.switch_database(config['influx']['database'])
 
 j = json.loads(sys.argv[1].replace("'", '"'))
-
 
 pv_volts = float(j['volts_pv'])
 pv_amps = float(j['amps_pv'])
@@ -20,6 +29,7 @@ ac_amps = float(j['amp_ac'])
 ac_volts = float(j['volts_ac'])
 ac_power = float(j['power_ac'])
 ac_freq = float(j['freq_ac'])
+ac_impedance = float(j['impedance_ac'])
 
 efficiency = float(round(ac_power / pv_power, 5))
 
@@ -44,6 +54,7 @@ points = [{
                 "ac_amps": ac_amps,
                 "ac_power": ac_power,
                 "ac_freq": ac_freq,
+                "ac_impedance": ac_impedance,
                 "efficiency": efficiency
         }
         },{
